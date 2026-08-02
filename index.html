@@ -366,6 +366,12 @@ td input,td select{padding:5px 6px;font-size:12px;min-width:70px}
 <div class="actions" style="justify-content:flex-start">
 <button class="btn btn-primary" onclick="cargarCatalogosIniciales()">Cargar catálogos del Excel</button></div>
 </div>
+<div class="card"><h2>Cargar solo el catálogo SAT de mercancías</h2>
+<p class="small">Si ya cargaste los demás catálogos antes, usa este botón para agregar <b>únicamente</b> las 61 claves SAT de mercancía que faltan, sin duplicar proveedores, tarifas ni ubicaciones.</p>
+<div id="mercState" class="notice info"></div>
+<div class="actions" style="justify-content:flex-start">
+<button class="btn btn-teal" onclick="cargarMercanciasSAT()">Cargar mercancías SAT faltantes</button></div>
+</div>
 <div class="card"><h2>Importar desde Excel</h2>
 <p class="small">Sube una versión actualizada del archivo de contratos para reemplazar o completar los catálogos.</p>
 <input type="file" id="xlsFile" accept=".xlsx,.xls">
@@ -1593,7 +1599,28 @@ function updateSeedState(){const n=Object.values(CAT).reduce((s,l)=>s+l.length,0
  $('seedState').innerHTML=n?
   `<b>${n}</b> registros ya cargados: ${Object.entries(CAT).map(([k,v])=>`${v.length} ${k}`).join(' · ')}.
    Si vuelves a cargar, se duplicarán.`:
-  'La base está vacía. Presiona el botón para cargar los catálogos del archivo de contratos.'}
+  'La base está vacía. Presiona el botón para cargar los catálogos del archivo de contratos.';
+ const ms=$('mercState');
+ if(ms){const t=CAT.mercanciasSat.length,total=(SEED.mercanciasSat||[]).length;
+  ms.innerHTML=t?`Tienes <b>${t}</b> de ${total} claves SAT de mercancía cargadas.`:
+   `No hay claves SAT de mercancía cargadas. Se agregarán las ${total} del catálogo base.`}}
+
+async function cargarMercanciasSAT(){
+ const existentes=new Set(CAT.mercanciasSat.map(m=>String(first(m,['CLAVE SAT'])).trim()));
+ const faltantes=(SEED.mercanciasSat||[]).filter(m=>!existentes.has(String(m['CLAVE SAT']).trim()));
+ if(!faltantes.length){
+  toast('Ya tienes todas las mercancías SAT cargadas');
+  updateSeedState();return}
+ if(!confirm(`Se agregarán ${faltantes.length} claves SAT de mercancía que faltan.\n\nLas ${existentes.size} que ya tienes no se tocan. ¿Continuar?`))return;
+ busy(true);
+ try{const rows=faltantes.map(data=>({tipo:'mercanciasSat',data}));
+  for(let i=0;i<rows.length;i+=200){
+   const {error}=await sb.from('catalogos').insert(rows.slice(i,i+200));
+   if(error)throw error}
+  await reloadData();updateSeedState();
+  toast(`${faltantes.length} mercancías SAT cargadas`);go('catalogos');setCat('mercanciasSat')}
+ catch(e){alert('No se pudieron cargar: '+(e.message||e))}
+ finally{busy(false)}}
 
 async function cargarCatalogosIniciales(){
  const n=Object.values(CAT).reduce((s,l)=>s+l.length,0);
