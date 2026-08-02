@@ -350,7 +350,8 @@ td input,td select{padding:5px 6px;font-size:12px;min-width:70px}
 <option value="act">Solo activos</option><option value="all">Todos</option><option value="ina">Solo inactivos</option></select></div>
 <div style="display:flex;align-items:flex-end;gap:8px">
 <button class="btn btn-primary" onclick="newCatRec()">+ Nuevo</button>
-<button class="btn btn-light" onclick="exportCat()">Exportar</button></div>
+<button class="btn btn-light" onclick="exportCat()">Exportar</button>
+<button class="btn btn-danger" onclick="eliminarInactivos()">Limpiar inactivos</button></div>
 </div>
 <div id="catAlert"></div>
 <div class="table-wrap"><table><thead id="catHead"></thead><tbody id="catBody"></tbody></table></div>
@@ -1454,7 +1455,8 @@ function renderCat(){const s=SCHEMAS[catActual],list=CAT[catActual]||[];
   <td>${activo(r)?'<span class="badge b-ok">Activo</span>':'<span class="badge b-err">Inactivo</span>'}</td>
   <td style="white-space:nowrap">
    <button class="btn btn-light btn-sm" onclick="editCatRec(${i})">Editar</button>
-   <button class="btn btn-danger btn-sm" onclick="toggleCatRec(${i})">${activo(r)?'Desactivar':'Activar'}</button>
+   <button class="btn btn-light btn-sm" onclick="toggleCatRec(${i})">${activo(r)?'Desactivar':'Activar'}</button>
+   <button class="btn btn-danger btn-sm" onclick="deleteCatRec(${i})">Eliminar</button>
   </td></tr>`).join('')||`<tr><td colspan="${s.cols.length+2}" class="small">Sin registros.</td></tr>`;
  $('catCount').textContent=`${rows.length} de ${list.length} registros`;
  // alertas del catálogo
@@ -1553,6 +1555,54 @@ async function toggleCatRec(i){const r=CAT[catActual][i],prev=r.ACTIVA;
  busy(true);
  try{await dbCat(catActual,r);renderCat();refreshSelects();toast('Actualizado')}
  catch(e){r.ACTIVA=prev;alert('No se pudo actualizar: '+(e.message||e))}
+ finally{busy(false)}}
+
+// Revisa si un registro de catálogo ya se usó en alguna orden (para no romper el histórico)
+function usadoEnOrden(tipo,rec){
+ const nombre=(campos)=>first(rec,campos);
+ for(const o of ORDENES){
+  if(tipo==='proveedores'&&first(o.proveedor||{},['PROVEEDOR'])===nombre(['PROVEEDOR']))return o.folio;
+  if(tipo==='empresas'&&first(o.empresa||{},['RFC'])===nombre(['RFC']))return o.folio;
+  if(tipo==='ubicaciones'){
+   const rs=nombre(['RAZÓN SOCIAL']);
+   if(first(o.destino||{},['RAZÓN SOCIAL'])===rs)return o.folio;
+   if((o.puntos||[]).some(p=>p.nombre===rs))return o.folio;}
+ }
+ return null}
+
+async function deleteCatRec(i){const s=SCHEMAS[catActual],r=CAT[catActual][i];
+ const etiqueta=s.cols.map(c=>first(r,[c])).filter(Boolean).slice(0,2).join(' · ');
+ const uso=usadoEnOrden(catActual,r);
+ if(uso){
+  alert(`No se puede eliminar "${etiqueta}".\n\nEste registro ya se usó en la orden ${uso} y borrarlo dañaría el histórico.\n\nSi ya no lo usas, mejor DESACTÍVALO: deja de aparecer en las listas pero conserva las órdenes anteriores.`);
+  return}
+ if(!confirm(`¿Eliminar definitivamente "${etiqueta}"?\n\nEsta acción no se puede deshacer. Si solo quieres que deje de aparecer, usa Desactivar.`))return;
+ busy(true);
+ try{if(r._id){const {error}=await sb.from('catalogos').delete().eq('id',r._id);if(error)throw error}
+  CAT[catActual].splice(i,1);renderCat();refreshSelects();toast('Registro eliminado')}
+ catch(e){alert('No se pudo eliminar: '+(e.message||e))}
+ finally{busy(false)}}
+
+async function eliminarInactivos(){const s=SCHEMAS[catActual];
+ const inactivos=CAT[catActual].map((r,i)=>({r,i})).filter(({r})=>!activo(r));
+ if(!inactivos.length){toast('No hay registros inactivos en este catálogo');return}
+ // filtrar los que sí se pueden borrar (no usados en órdenes)
+ const borrables=inactivos.filter(({r})=>!usadoEnOrden(catActual,r));
+ const protegidos=inactivos.length-borrables.length;
+ if(!borrables.length){
+  alert(`Los ${inactivos.length} registros inactivos ya se usaron en órdenes, así que no se pueden borrar sin dañar el histórico.`);
+  return}
+ let msg=`Se eliminarán ${borrables.length} registros inactivos de ${s.titulo}s.`;
+ if(protegidos)msg+=`\n\n(${protegidos} no se borran porque ya se usaron en órdenes.)`;
+ msg+='\n\nEsta acción no se puede deshacer. ¿Continuar?';
+ if(!confirm(msg))return;
+ busy(true);
+ try{const ids=borrables.map(({r})=>r._id).filter(Boolean);
+  if(ids.length){const {error}=await sb.from('catalogos').delete().in('id',ids);if(error)throw error}
+  const setBorrar=new Set(borrables.map(({r})=>r));
+  CAT[catActual]=CAT[catActual].filter(r=>!setBorrar.has(r));
+  renderCat();refreshSelects();toast(`${borrables.length} registros eliminados`)}
+ catch(e){alert('No se pudieron eliminar: '+(e.message||e))}
  finally{busy(false)}}
 
 function exportCat(){const s=SCHEMAS[catActual],list=CAT[catActual];
