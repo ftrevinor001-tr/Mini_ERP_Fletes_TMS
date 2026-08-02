@@ -1235,7 +1235,6 @@ function verDoc(folio){const o=ORDENES.find(x=>x.folio===folio);if(!o){alert('Or
   <td>${esc(m.peligroso||'No')}</td></tr>`).join('');
 
  const t=o.transporte||{},fig=(o.figuras||[])[0]||{};
- const bit=(o.bitacora||[]).map(b=>`<div>${esc(b.fecha)} — ${esc(b.accion)}</div>`).join('');
 
  const hayCP=(o.puntos||[]).length>0;
 
@@ -1380,8 +1379,6 @@ function verDoc(folio){const o=ORDENES.find(x=>x.folio===folio);if(!o){alert('Or
   <b>Nota:</b> el transportista es responsable de emitir el CFDI con complemento Carta Porte 3.1
   conforme a las reglas del SAT. Los datos anteriores corresponden a la información proporcionada
   por ${esc(first(emp,['RAZÓN SOCIAL']))} para la OC ${esc(o.folio)}.</div>
- ${bit?`<div class="sec" style="margin-top:10px"><div class="st alt">BITÁCORA</div>
-  <div style="padding:6px 9px;font-size:7.5px;line-height:1.6">${bit}</div></div>`:''}
  </div>`:''}
 
  ${c.incluirAnexo!==false?renderAnexo(o,emp,prov):''}
